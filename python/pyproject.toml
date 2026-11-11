@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "demod1090"
+version = "1.0.0"
+description = "Démodulateur ADS-B / Mode S pour enregistrements IQ (int16, WAV, MATLAB .mat) et fichiers Parquet"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.22"]
+
+[project.optional-dependencies]
+parquet = ["pyarrow>=10"]
+test = ["pytest>=7", "pyarrow>=10"]
+
+[project.scripts]
+demod1090 = "demod1090.cli:main"
+
+[tool.setuptools]
+packages = ["demod1090"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

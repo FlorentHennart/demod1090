@@ -23,6 +23,11 @@ python3 -m http.server 8000
 
 puis <http://localhost:8000/>. Un signal de démonstration synthétique se décode au chargement.
 
+## Version Python
+
+Le même moteur existe en Python (numpy) dans [`python/`](python/README.md) : ligne de commande
+(`python3 -m demod1090 capture.cs16`), bibliothèque, exports AVR / CSV / JSON / GeoJSON, tests pytest.
+
 ## Tests
 
 ```bash
@@ -36,5 +41,6 @@ app.js              interface (worker, carte canvas, listes, vue signal)
 parquet.js          lecture Parquet : reconnaissance des colonnes, trames ou états, lecture par groupes de lignes
 vendor/             hyparquet 1.31.5 + hyparquet-compressors 1.1.2 (MIT, regroupés avec esbuild), terres Natural Earth 110m
 tests/fixtures/     petits fichiers Parquet de test (trames, états)
+python/             version Python (numpy) : paquet demod1090, ligne de commande, tests pytest
 tests/adsb.test.js  trames de référence, CPR, aller-retour synthétique 2 / 2,4 / 4 / 8 MS/s, formats
 ```
