@@ -1,0 +1,10 @@
+{
+  "name": "demod1090",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Démodulateur ADS-B / Mode S dans le navigateur pour enregistrements IQ, fichiers .mat et Parquet",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node tests/adsb.test.js"
+  }
+}

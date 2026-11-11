@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Démod 1090</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Mise en page : poste radar sombre — une colonne sur téléphone, carte + fiche côte à côte sur grand écran.
+   Couleurs : fond ardoise, ambre « avionique » pour l'action, cyan pour le signal et les traces. */
+:root {
+  --bg: #0c131b; --surface: #121c27; --surface-2: #182533; --line: #243548; --fg: #e3ebf2; --muted: #8b9cad;
+  --accent: #f0a63a; --accent-ink: #1b1305; --accent-soft: rgba(240, 166, 58, .14);
+  --signal: #5cc6e0; --signal-soft: rgba(92, 198, 224, .16);
+  --ok: #4cc38a; --warn: #e8b04a; --crit: #f0605a; --crit-soft: rgba(240, 96, 90, .16);
+  --alt-l: 62%; --land: #1d2a37; --coast: #2e4256;
+  --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 10px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #edf1f5; --surface: #ffffff; --surface-2: #f3f6f9; --line: #d3dce6; --fg: #122030; --muted: #586a7c;
+    --accent: #b5680c; --accent-ink: #ffffff; --accent-soft: rgba(181, 104, 12, .12);
+    --signal: #0d7fa3; --signal-soft: rgba(13, 127, 163, .12);
+    --ok: #1d8a56; --warn: #9f6a00; --crit: #c8382f; --crit-soft: rgba(200, 56, 47, .1); --alt-l: 44%; --land: #e2e8ee; --coast: #c3ced9;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #edf1f5; --surface: #ffffff; --surface-2: #f3f6f9; --line: #d3dce6; --fg: #122030; --muted: #586a7c;
+  --accent: #b5680c; --accent-ink: #ffffff; --accent-soft: rgba(181, 104, 12, .12);
+  --signal: #0d7fa3; --signal-soft: rgba(13, 127, 163, .12);
+  --ok: #1d8a56; --warn: #9f6a00; --crit: #c8382f; --crit-soft: rgba(200, 56, 47, .1); --alt-l: 44%; --land: #e2e8ee; --coast: #c3ced9;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--f-body); -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px; display: grid; gap: 16px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 600; letter-spacing: .01em; margin: 0; text-wrap: balance; }
+.mono, code { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button, select, input { font: inherit; color: inherit; }
+
+/* En-tête */
+.top { padding-block: 18px 2px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand svg { flex: none; }
+.brand h1 { font-size: 30px; line-height: 1; }
+.brand h1 span { color: var(--accent); }
+.brand p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; color: var(--muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+.chip.live i { background: var(--accent); animation: pulse 1s infinite alternate; }
+.chip.done i { background: var(--ok); }
+.chip.err i { background: var(--crit); }
+@keyframes pulse { to { opacity: .3; } }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+
+/* Source */
+.source { padding: 16px; display: grid; gap: 14px; }
+.drop { border: 1.5px dashed var(--line); border-radius: var(--r); padding: 18px; display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: var(--surface-2); transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop strong { display: block; font-family: var(--f-display); font-size: 21px; font-weight: 600; }
+.drop span { color: var(--muted); font-size: 13.5px; }
+.drop-txt { min-width: 0; flex: 1 1 260px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { appearance: none; border: 1px solid var(--line); background: var(--surface); padding: 9px 15px; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 14.5px; display: inline-flex; align-items: center; gap: 7px; min-height: 42px; white-space: nowrap; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn:disabled { opacity: .5; cursor: default; }
+/* le champ fichier recouvre le bouton : on touche directement le contrôle natif (fiable sur mobile et en WebView) */
+.filebtn { position: relative; overflow: hidden; }
+.filebtn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 200px; }
+.filebtn:focus-within { outline: 2px solid var(--fg); outline-offset: 2px; }
+.btn.small { min-height: 34px; padding: 5px 11px; font-size: 13.5px; }
+.fileinfo { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; align-items: baseline; }
+.fileinfo b { font-weight: 600; word-break: break-all; }
+.note { font-size: 13px; color: var(--muted); }
+.note.warn { color: var(--warn); }
+
+.settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 16px; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field > label, .field > .lbl { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 500; }
+.field select, .field input[type=number], .field input[type=text], .field input[type=search] { width: 100%; min-height: 40px; border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 7px 10px; font-size: 14.5px; }
+.field.attn select, .field.attn input { border-color: var(--warn); box-shadow: 0 0 0 3px rgba(232, 176, 74, .18); }
+.pair { display: flex; gap: 8px; }
+.pair > * { min-width: 0; flex: 1; }
+.range { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.range input { flex: 1; accent-color: var(--accent); }
+.range output { font-family: var(--f-mono); font-size: 13px; min-width: 44px; text-align: right; }
+.switch { display: flex; align-items: center; gap: 10px; min-height: 40px; cursor: pointer; font-size: 14px; }
+.switch input { width: 20px; height: 20px; accent-color: var(--accent); }
+
+.runrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.progress { flex: 1 1 200px; height: 8px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 99px; overflow: hidden; }
+.progress div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+#ptext { font-size: 13px; color: var(--muted); font-family: var(--f-mono); }
+
+/* Indicateurs */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.kpi { padding: 12px 14px; }
+@media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kpi:first-child { grid-column: 1 / -1; } .maphint { display: none; } }
+.kpi .lbl { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.kpi .val { font-family: var(--f-display); font-size: 30px; font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.kpi .val small { font-size: 16px; color: var(--muted); font-weight: 500; margin-left: 3px; }
+.kpi .sub { font-size: 12.5px; color: var(--muted); }
+
+.timeline { padding: 12px 14px 8px; display: grid; gap: 6px; }
+.timeline header { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+.timeline h2 { font-size: 18px; }
+.legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+#tl { width: 100%; height: 74px; display: block; }
+
+/* Onglets */
+.tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; overflow-x: auto; }
+.tabs button { flex: 1 0 auto; border: 0; background: none; padding: 9px 14px; border-radius: 9px; cursor: pointer; font-weight: 500; color: var(--muted); font-size: 14.5px; }
+.tabs button[aria-selected=true] { background: var(--surface-2); color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
+.tabs .count { font-family: var(--f-mono); font-size: 12px; margin-left: 4px; color: var(--muted); }
+
+/* Carte */
+.mapgrid { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; }
+@media (max-width: 860px) { .mapgrid { grid-template-columns: minmax(0, 1fr); } }
+.mapbox { position: relative; height: min(68vh, 640px); min-height: 340px; overflow: hidden; }
+#map { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; border-radius: var(--r); }
+.mapctl { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+.mapctl .btn { background: var(--surface); }
+.altkey { position: absolute; left: 10px; bottom: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 11.5px; color: var(--muted); display: grid; gap: 4px; }
+.altkey div { width: 150px; height: 7px; border-radius: 4px; }
+.altkey span { display: flex; justify-content: space-between; font-family: var(--f-mono); }
+.maphint { position: absolute; left: 10px; top: 10px; font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; max-width: calc(100% - 140px); }
+
+.detail { padding: 16px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.detail .empty { color: var(--muted); font-size: 14px; }
+.dhead { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+.dhead h3 { font-size: 30px; line-height: 1; }
+.dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.dl div { min-width: 0; }
+.dl dt { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.dl dd { margin: 0; font-family: var(--f-mono); font-size: 14px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+#spark { width: 100%; height: 70px; display: block; }
+
+/* Aéronefs */
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+.toolbar .field { flex: 1 1 180px; }
+.acgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.ac { padding: 14px; display: grid; gap: 10px; cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; }
+.ac:hover { border-color: var(--muted); }
+.ac.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ac .row1 { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.ac .cs { font-family: var(--f-display); font-size: 24px; font-weight: 600; line-height: 1; }
+.ac .id { font-family: var(--f-mono); font-size: 12.5px; color: var(--muted); }
+.ac .cat { font-size: 12.5px; color: var(--muted); }
+.vals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; }
+.vals b { display: block; font-family: var(--f-mono); font-weight: 500; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+.vals span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.sq { font-family: var(--f-mono); font-size: 12.5px; padding: 1px 7px; border-radius: 5px; border: 1px solid var(--line); white-space: nowrap; }
+.sq.emg { background: var(--crit-soft); border-color: var(--crit); color: var(--crit); font-weight: 600; }
+.meter { height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--signal); }
+.foot { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); gap: 8px; }
+.emptybox { padding: 28px; text-align: center; color: var(--muted); }
+
+/* Messages */
+.msgs { overflow: hidden; }
+.mrow { display: grid; grid-template-columns: 78px 74px 92px minmax(0, 1fr) 54px; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); align-items: baseline; cursor: pointer; font-size: 13.5px; }
+.mrow:hover, .mrow.sel { background: var(--surface-2); }
+.mrow.head { cursor: default; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); background: var(--surface-2); }
+.mrow .hx { grid-column: 4; font-family: var(--f-mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.mrow .sum { min-width: 0; }
+.df { font-family: var(--f-mono); font-size: 11.5px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--line); white-space: nowrap; }
+.df.es { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.crcf { color: var(--warn); font-size: 11.5px; }
+@media (max-width: 640px) {
+  .mrow { grid-template-columns: 64px 66px minmax(0, 1fr); gap: 4px 10px; }
+  .mrow .rs, .mrow.head .rs { display: none; }
+  .mrow .sum, .mrow .hx { grid-column: 1 / -1; }
+  .mrow.head .sum { display: none; }
+}
+.more { display: flex; justify-content: center; padding: 12px; gap: 10px; flex-wrap: wrap; }
+
+/* Signal */
+.sig { padding: 16px; display: grid; gap: 12px; }
+.sighead { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; }
+.sighead h3 { font-size: 22px; }
+.sigscroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+#sigc { display: block; height: 250px; }
+.hexline { font-family: var(--f-mono); font-size: 14px; overflow-wrap: anywhere; letter-spacing: .04em; }
+.hexline .df5 { color: var(--accent); }
+.hexline .aa { color: var(--signal); }
+.hexline .pi { color: var(--muted); }
+.explain { font-size: 13.5px; color: var(--muted); max-width: 72ch; }
+
+.pane[hidden] { display: none !important; }
+footer { color: var(--muted); font-size: 12.5px; text-align: center; padding-top: 6px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="20" cy="20" r="18" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+        <circle cx="20" cy="20" r="11" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+        <path d="M20 20 L20 2 A18 18 0 0 1 35.6 11 Z" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+        <circle cx="27" cy="9.5" r="2.2" fill="var(--accent)"/>
+        <circle cx="20" cy="20" r="2" fill="var(--fg)"/>
+      </svg>
+      <div>
+        <h1>Démod <span>1090</span></h1>
+        <p>Démodulateur ADS-B / Mode S pour enregistrements IQ</p>
+      </div>
+    </div>
+    <span id="status" class="chip"><i></i><span id="statusText">Prêt</span></span>
+  </header>
+
+  <section class="card source" aria-label="Source du signal">
+    <div id="drop" class="drop">
+      <div class="drop-txt">
+        <strong>Déposez un enregistrement IQ</strong>
+        <span>I/Q 16 bits signés (.cs16, .bin, .iq, .raw), MATLAB .mat, WAV de SDR#, SDRuno, SDR++, ou Parquet de trames / positions ADS-B. Fréquence d’échantillonnage détectée automatiquement si besoin. Le fichier reste sur votre appareil : tout est décodé localement.</span>
+      </div>
+      <div class="actions">
+        <span class="btn primary filebtn">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V2M4.5 5.5 8 2l3.5 3.5M2 10v3.5h12V10" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          Choisir un fichier
+          <input type="file" id="file" aria-label="Choisir un fichier IQ">
+        </span>
+        <button id="demo" class="btn" type="button">Signal de démonstration</button>
+      </div>
+    </div>
+
+    <div id="fileinfo" class="fileinfo"></div>
+
+    <div class="settings">
+      <div class="field" id="fFmt">
+        <label for="fmt">Format des échantillons</label>
+        <select id="fmt">
+          <option value="cs16">int16 signé, petit-boutiste (cs16)</option>
+          <option value="cs16be">int16 signé, gros-boutiste</option>
+          <option value="cu8">uint8 non signé (RTL-SDR)</option>
+          <option value="cs8">int8 signé (HackRF)</option>
+          <option value="cf32">float32 (GNU Radio)</option>
+          <option value="mat">MATLAB .mat (lu automatiquement)</option>
+          <option value="parquet">Parquet : trames ou positions (lu automatiquement)</option>
+        </select>
+      </div>
+      <div class="field" id="fRate">
+        <label for="rate">Fréquence d’échantillonnage</label>
+        <div class="pair">
+          <select id="rate">
+            <option value="2000000">2 MS/s</option>
+            <option value="2400000" selected>2,4 MS/s</option>
+            <option value="2560000">2,56 MS/s</option>
+            <option value="3000000">3 MS/s</option>
+            <option value="3200000">3,2 MS/s</option>
+            <option value="4000000">4 MS/s</option>
+            <option value="5000000">5 MS/s</option>
+            <option value="6000000">6 MS/s</option>
+            <option value="8000000">8 MS/s</option>
+            <option value="10000000">10 MS/s</option>
+            <option value="12000000">12 MS/s</option>
+            <option value="16000000">16 MS/s</option>
+            <option value="20000000">20 MS/s</option>
+            <option value="24000000">24 MS/s</option>
+            <option value="25000000">25 MS/s</option>
+            <option value="30720000">30,72 MS/s</option>
+            <option value="32000000">32 MS/s</option>
+            <option value="40000000">40 MS/s</option>
+            <option value="50000000">50 MS/s</option>
+            <option value="56000000">56 MS/s</option>
+            <option value="61440000">61,44 MS/s</option>
+            <option value="80000000">80 MS/s</option>
+            <option value="100000000">100 MS/s</option>
+            <option value="custom">Autre…</option>
+          </select>
+          <input id="rateCustom" type="number" min="1.9" max="100" step="0.001" placeholder="MS/s" aria-label="Fréquence personnalisée en MS/s" hidden>
+        </div>
+      </div>
+      <div class="field">
+        <label for="thr">Seuil de détection</label>
+        <div class="range"><input id="thr" type="range" min="3" max="16" step="0.5" value="8"><output id="thrOut" for="thr">8 dB</output></div>
+      </div>
+      <div class="field">
+        <span class="lbl">Correction d’erreurs</span>
+        <label class="switch"><input id="fix" type="checkbox" checked> Corriger 1 bit (DF17/18)</label>
+      </div>
+      <div class="field">
+        <span class="lbl">Position du récepteur (option)</span>
+        <div class="pair">
+          <input id="rlat" type="number" step="0.0001" min="-90" max="90" placeholder="Latitude" aria-label="Latitude du récepteur">
+          <input id="rlon" type="number" step="0.0001" min="-180" max="180" placeholder="Longitude" aria-label="Longitude du récepteur">
+        </div>
+      </div>
+    </div>
+
+    <div class="runrow">
+      <button id="run" class="btn primary" type="button" disabled>Démoduler le fichier</button>
+      <button id="detect" class="btn" type="button" disabled>Détecter la fréquence</button>
+      <button id="stop" class="btn" type="button" hidden>Arrêter</button>
+      <div class="progress" aria-hidden="true"><div id="bar"></div></div>
+      <span id="ptext"></span>
+    </div>
+  </section>
+
+  <section class="kpis" aria-label="Résumé">
+    <div class="card kpi"><div class="lbl" id="kDurLbl">Signal analysé</div><div class="val" id="kDur">—</div><div class="sub" id="kDurSub">&nbsp;</div></div>
+    <div class="card kpi"><div class="lbl">Messages valides</div><div class="val" id="kMsg">—</div><div class="sub" id="kMsgSub">&nbsp;</div></div>
+    <div class="card kpi"><div class="lbl">Aéronefs</div><div class="val" id="kAc">—</div><div class="sub" id="kAcSub">&nbsp;</div></div>
+    <div class="card kpi"><div class="lbl">Positions</div><div class="val" id="kPos">—</div><div class="sub" id="kPosSub">&nbsp;</div></div>
+    <div class="card kpi"><div class="lbl">Portée max</div><div class="val" id="kRng">—</div><div class="sub" id="kRngSub">&nbsp;</div></div>
+  </section>
+
+  <section class="card timeline" aria-label="Messages dans le temps">
+    <header>
+      <h2>Activité 1090 MHz</h2>
+      <div class="legend"><span><i style="background:var(--accent)"></i>ADS-B (DF17/18)</span><span><i style="background:var(--signal)"></i>Réponses Mode S</span><span id="tlScale" class="mono"></span></div>
+    </header>
+    <canvas id="tl" aria-label="Histogramme des messages décodés au fil du fichier"></canvas>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="Vues">
+    <button role="tab" id="t-map" aria-selected="true" aria-controls="p-map">Carte</button>
+    <button role="tab" id="t-ac" aria-selected="false" aria-controls="p-ac">Aéronefs<span class="count" id="cAc"></span></button>
+    <button role="tab" id="t-msg" aria-selected="false" aria-controls="p-msg">Messages<span class="count" id="cMsg"></span></button>
+    <button role="tab" id="t-sig" aria-selected="false" aria-controls="p-sig">Signal</button>
+  </nav>
+
+  <section id="p-map" class="pane" role="tabpanel" aria-labelledby="t-map">
+    <div class="mapgrid">
+      <div class="card mapbox">
+        <canvas id="map" aria-label="Carte des positions décodées"></canvas>
+        <div class="maphint" id="maphint">Glisser pour déplacer · pincer ou molette pour zoomer</div>
+        <div class="mapctl">
+          <button class="btn small" id="labels" type="button" aria-pressed="true">Étiquettes</button>
+          <button class="btn small" id="fit" type="button">Recentrer</button>
+        </div>
+        <div class="altkey"><div id="altgrad"></div><span><em>0</em><em>FL200</em><em>FL400+</em></span></div>
+      </div>
+      <aside class="card detail" id="detail" aria-live="polite"></aside>
+    </div>
+  </section>
+
+  <section id="p-ac" class="pane" role="tabpanel" aria-labelledby="t-ac" hidden>
+    <div class="toolbar" style="margin-bottom:12px">
+      <div class="field"><label for="acSort">Trier par</label>
+        <select id="acSort"><option value="msgs">Nombre de messages</option><option value="last">Dernier vu</option><option value="alt">Altitude</option><option value="dist">Distance</option><option value="rssi">Niveau reçu</option><option value="cs">Indicatif</option></select></div>
+      <div class="field"><span class="lbl">Filtre</span><label class="switch"><input type="checkbox" id="acHide" checked> Masquer les détections isolées</label></div>
+    </div>
+    <div class="acgrid" id="acgrid"></div>
+  </section>
+
+  <section id="p-msg" class="pane" role="tabpanel" aria-labelledby="t-msg" hidden>
+    <div class="toolbar" style="margin-bottom:12px">
+      <div class="field"><label for="mq">Rechercher</label><input id="mq" type="search" placeholder="ICAO, indicatif, hexadécimal…"></div>
+      <div class="field"><label for="mdf">Type</label>
+        <select id="mdf"><option value="">Tous les DF</option><option value="es">ADS-B (DF17/18)</option><option value="11">DF11 All-Call</option><option value="4,20">DF4/20 Altitude</option><option value="5,21">DF5/21 Identité</option><option value="0,16">DF0/16 ACAS</option></select></div>
+      <div class="field" style="flex:0 0 auto"><span class="lbl">Export</span><button class="btn" id="copyAvr" type="button">Copier au format AVR</button></div>
+    </div>
+    <div class="card msgs" id="msglist"></div>
+    <textarea id="copyFallback" class="sr" aria-hidden="true" tabindex="-1"></textarea>
+  </section>
+
+  <section id="p-sig" class="pane" role="tabpanel" aria-labelledby="t-sig" hidden>
+    <div class="card sig" id="sigpane"></div>
+  </section>
+
+  <footer>Démodulation PPM 1 Mbit/s · CRC-24 Mode S · décodage CPR · aucune donnée ne quitte l’appareil</footer>
+</div>
+
+<script src="vendor/land-110m.js"></script>
+<script src="vendor/hyparquet.js"></script>
+<script src="adsb-core.js"></script>
+<script src="parquet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
